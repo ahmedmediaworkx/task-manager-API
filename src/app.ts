@@ -1,0 +1,21 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import swaggerUi from 'swagger-ui-express';
+import routes from './routes';
+import { prisma } from './db';
+import { errors } from './middleware';
+import { openapi } from './openapi';
+
+export const app = express();
+app.use(helmet());
+app.use(cors());
+app.use(express.json({ limit: '100kb' }));
+app.get('/health', async (_req, res) => { try { await prisma.$queryRaw`SELECT 1`; return res.json({ status: 'ok' }); } catch { return res.status(503).json({ status: 'unavailable' }); } });
+app.get('/docs/openapi.json', (_req, res) => res.json(openapi));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
+app.use('/api/v1/auth', rateLimit({ windowMs: 15 * 60_000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
+app.use('/api/v1', routes);
+app.use((_req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } }));
+app.use(errors);
